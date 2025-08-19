@@ -8,7 +8,7 @@ from typing import Generic, TypeVar
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from pydantic_cache import _get_signature, pydantic_cache
+from auto_pydantic_cache import _get_signature, pydantic_cache
 
 
 @pytest.fixture

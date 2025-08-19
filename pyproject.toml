@@ -1,15 +1,15 @@
 [project]
-name = "pydantic-cache"
+name = "auto-pydantic-cache"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { email = "andrew@protopia.ai" }
+    { name = "Andrew P. Sansom", email = "andrew@euleriancircuit.com" }
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "platformdirs>=4.3.8,<=4.3.8",
-    "pydantic>=2.10.0,<=2.11.7",
+    "platformdirs>=4.3.8,<4.4.0",
+    "pydantic>=2.10.0,<2.12.0",
 ]
 
 [build-system]

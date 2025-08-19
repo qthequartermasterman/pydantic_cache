@@ -192,6 +192,37 @@ wheels = [
 ]
 
 [[package]]
+name = "auto-pydantic-cache"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "platformdirs" },
+    { name = "pydantic" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "openai" },
+    { name = "pydantic-ai" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "platformdirs", specifier = ">=4.3.8,<4.4.0" },
+    { name = "pydantic", specifier = ">=2.10.0,<2.12.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "openai", specifier = "==1.100.0" },
+    { name = "pydantic-ai", specifier = "==0.7.2" },
+    { name = "pytest", specifier = "==8.4.1" },
+    { name = "ruff", specifier = "==0.12.9" },
+]
+
+[[package]]
 name = "boto3"
 version = "1.40.11"
 source = { registry = "https://pypi.org/simple" }
@@ -1289,37 +1320,6 @@ temporal = [
 vertexai = [
     { name = "google-auth" },
     { name = "requests" },
-]
-
-[[package]]
-name = "pydantic-cache"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "platformdirs" },
-    { name = "pydantic" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "openai" },
-    { name = "pydantic-ai" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "platformdirs", specifier = ">=4.3.8,<=4.3.8" },
-    { name = "pydantic", specifier = ">=2.10.0,<=2.11.7" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "openai", specifier = "==1.100.0" },
-    { name = "pydantic-ai", specifier = "==0.7.2" },
-    { name = "pytest", specifier = "==8.4.1" },
-    { name = "ruff", specifier = "==0.12.9" },
 ]
 
 [[package]]
