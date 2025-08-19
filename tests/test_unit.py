@@ -14,10 +14,10 @@ from auto_pydantic_cache import _get_signature, pydantic_cache
 @pytest.fixture
 def tmp_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Override package cache directory to a temporary path."""
-    monkeypatch.setattr("pydantic_cache.get_package_name", lambda: "test_package")
-    monkeypatch.setattr("pydantic_cache.get_package_author", lambda: "test_author")
+    monkeypatch.setattr("auto_pydantic_cache.get_package_name", lambda: "test_package")
+    monkeypatch.setattr("auto_pydantic_cache.get_package_author", lambda: "test_author")
     monkeypatch.setattr(
-        "pydantic_cache.platformdirs.AppDirs",
+        "auto_pydantic_cache.platformdirs.AppDirs",
         lambda *_args, **kwargs: type("AppDirs", (), {"user_cache_dir": tmp_path})(),  # noqa: ARG005
     )
     return tmp_path
@@ -149,10 +149,10 @@ def test_mutable_default_arguments(tmp_cache_dir: Path) -> None:
 
 def test_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Confirm that the cache directory is created automatically and populated with files."""
-    monkeypatch.setattr("pydantic_cache.get_package_name", lambda: "pkg")
-    monkeypatch.setattr("pydantic_cache.get_package_author", lambda: "auth")
+    monkeypatch.setattr("auto_pydantic_cache.get_package_name", lambda: "pkg")
+    monkeypatch.setattr("auto_pydantic_cache.get_package_author", lambda: "auth")
     monkeypatch.setattr(
-        "pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
+        "auto_pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
     )
 
     @pydantic_cache
