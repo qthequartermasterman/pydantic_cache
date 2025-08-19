@@ -1,7 +1,7 @@
 [project]
 name = "auto-pydantic-cache"
 version = "0.1.0"
-description = "Add your description here"
+description = "A caching utility for functions returning Pydantic models, optimized for deterministic and generative AI workflows."
 readme = "README.md"
 authors = [
     { name = "Andrew P. Sansom", email = "andrew@euleriancircuit.com" }
