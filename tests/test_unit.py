@@ -8,15 +8,13 @@ from typing import Generic, TypeVar
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from auto_pydantic_cache import _get_signature, pydantic_cache, Namespace, CorruptedCacheFileError
+from auto_pydantic_cache import CorruptedCacheFileError, Namespace, _get_signature, pydantic_cache
 
 
 @pytest.fixture
 def tmp_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Override package cache directory to a temporary path."""
-    monkeypatch.setattr(
-        "auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("test_package", "test_author")
-    )
+    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda _: Namespace("test_package", "test_author"))
     monkeypatch.setattr(
         "auto_pydantic_cache.platformdirs.AppDirs",
         lambda *_args, **kwargs: type("AppDirs", (), {"user_cache_dir": tmp_path})(),  # noqa: ARG005
@@ -150,7 +148,7 @@ def test_mutable_default_arguments(tmp_cache_dir: Path) -> None:
 
 def test_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Confirm that the cache directory is created automatically and populated with files."""
-    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("pkg", "auth"))
+    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda _: Namespace("pkg", "auth"))
     monkeypatch.setattr(
         "auto_pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
     )
@@ -166,7 +164,7 @@ def test_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_subdir_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Confirm that the cache directory is created automatically and populated with files."""
-    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("pkg", "auth"))
+    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda _: Namespace("pkg", "auth"))
     monkeypatch.setattr(
         "auto_pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
     )
