@@ -37,10 +37,12 @@ Intended use:
 - Workflows involving structured AI outputs where repeated calls may be expensive.
 """
 
+import contextlib
 import dataclasses
 import functools
 import hashlib
 import inspect
+import json
 import pathlib
 import threading
 import warnings
@@ -68,6 +70,24 @@ class Namespace:
 _NAMESPACES: dict[str, Namespace] = {}
 _lock = threading.RLock()
 _CANNOT_DETERMINE_CALLER_PACKAGE = "cannot determine caller package"
+_COULD_NOT_IMPORT_MODULE = "Could not import '{dotted_path}': {exception}"
+_CORRUPTED_CACHE_FILE = "Cache file is corrupted: {file_path}. {exception}"
+
+
+class CorruptedCacheFileError(EnvironmentError):
+    """Indicates that a cache file is corrupted or cannot be deserialized properly."""
+
+    def __init__(self, file_path: pathlib.Path, exception: Exception) -> None:
+        """Initialize the error with the cache file path and the original exception.
+
+        Args:
+            file_path: The path to the cache file.
+            exception: The original exception that occurred.
+
+        """
+        self.file_path = file_path
+        self.exception = exception
+        super().__init__(f"{_CORRUPTED_CACHE_FILE.format(file_path=file_path, exception=exception)}")
 
 
 def set_namespace(package_name: str, package_author: str | None = None, for_package: str | None = None) -> None:
@@ -147,6 +167,13 @@ class _CachedModel(pydantic.BaseModel, Generic[R]):
 
     function_call: _FunctionCall
     """The function call details used to generate or retrieve this cache entry."""
+    pydantic_model_type: str | None = None
+    """The type of the Pydantic model being cached.
+
+    This is a string representation of the type, including the full dot-deliminated import path and the __qualname__.
+
+    If not specified, the type will be attempted to be inferred from type annotations.
+    """
     result: R
     """The output of the function, which must be a Pydantic model."""
 
@@ -180,8 +207,42 @@ def _get_signature(func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> t
         _FunctionCall(
             function_name=func.__qualname__, function_arguments=call_args, function_source_code_hash=source_code_hash
         ),
-        signature.return_annotation,
+        None if signature.return_annotation is inspect.Signature.empty else signature.return_annotation,
     )
+
+
+def _import_item_from_string(dotted_path: str) -> R:
+    """Import a module or attribute from a dotted path string.
+
+    Args:
+        dotted_path: The full dotted path to the module or attribute (e.g., 'package.module.ClassName').
+
+    Returns:
+        The imported module or attribute.
+
+    Raises:
+        ImportError: If the module or attribute cannot be imported.
+
+    """
+    try:
+        module_path, attr_name = dotted_path.rsplit(".", 1)
+        module = __import__(module_path, fromlist=[attr_name])
+        return getattr(module, attr_name)
+    except (ImportError, AttributeError) as e:
+        raise ImportError(_COULD_NOT_IMPORT_MODULE.format(dotted_path=dotted_path, exception=str(e))) from e
+
+
+def _get_type_name(instance: object) -> str:
+    """Get the type name of a Pydantic model instance.
+
+    Args:
+        instance: The Pydantic model instance.
+
+    Returns:
+        The type name of the model.
+
+    """
+    return f"{instance.__class__.__module__}.{instance.__class__.__qualname__}"
 
 
 @overload
@@ -190,7 +251,7 @@ def pydantic_cache(
 ) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 @overload
 def pydantic_cache(func: Callable[P, R], cache_sub_dir: str | None = None) -> Callable[P, R]: ...
-def pydantic_cache(
+def pydantic_cache(  # noqa: C901
     func: Callable[P, R] | None = None, cache_sub_dir: str | None = None
 ) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Cache the results of functions returning Pydantic models.
@@ -306,7 +367,7 @@ def pydantic_cache(
         - Cache entries are invalidated automatically if the function's source code changes.
         - Works best with deterministic functions returning Pydantic models.
         - Cache files are stored under a package-specific directory in the user's cache folder, determined by
-        `get_package_name()` and `get_package_author()`.
+        `set_namespace()`.
         - Internal classes `_FunctionCall` and `_CachedModel` handle serialization and should not be used directly by
         end users.
 
@@ -315,6 +376,7 @@ def pydantic_cache(
     def decorator(f: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(f)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            return_type: type[R]
             function_call, return_type = _get_signature(f, *args, **kwargs)
             module = inspect.getmodule(f)
             if module is None or not module.__name__:
@@ -328,13 +390,25 @@ def pydantic_cache(
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = (cache_dir) / function_call.file_name
             if cache_file.exists():
-                cached_model: _CachedModel[R] = cast(
-                    "_CachedModel[R]", _CachedModel[return_type].model_validate_json(cache_file.read_text())
-                )
-                return cached_model.result
+                try:
+                    cached_model_json = json.loads(cache_file.read_text())
+                except json.JSONDecodeError as e:
+                    raise CorruptedCacheFileError(cache_file, e) from e
+                if serialized_model_type := cached_model_json.get("pydantic_model_type"):
+                    with contextlib.suppress(ImportError):
+                        return_type = _import_item_from_string(serialized_model_type)
+                try:
+                    cached_model: _CachedModel[R] = cast(
+                        "_CachedModel[R]", _CachedModel[return_type].model_validate(cached_model_json)
+                    )
+                except pydantic.ValidationError as e:
+                    raise CorruptedCacheFileError(cache_file, e) from e
+                else:
+                    return cached_model.result
 
             result = f(*args, **kwargs)
-            cached_model = _CachedModel(function_call=function_call, result=result)
+            result_type = _get_type_name(result)
+            cached_model = _CachedModel(function_call=function_call, pydantic_model_type=result_type, result=result)
             cache_file.write_text(cached_model.model_dump_json())
             return result
 

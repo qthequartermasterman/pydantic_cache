@@ -8,14 +8,15 @@ from typing import Generic, TypeVar
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from auto_pydantic_cache import _get_signature, pydantic_cache
+from auto_pydantic_cache import _get_signature, pydantic_cache, Namespace, CorruptedCacheFileError
 
 
 @pytest.fixture
 def tmp_cache_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Override package cache directory to a temporary path."""
-    monkeypatch.setattr("auto_pydantic_cache.get_package_name", lambda: "test_package")
-    monkeypatch.setattr("auto_pydantic_cache.get_package_author", lambda: "test_author")
+    monkeypatch.setattr(
+        "auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("test_package", "test_author")
+    )
     monkeypatch.setattr(
         "auto_pydantic_cache.platformdirs.AppDirs",
         lambda *_args, **kwargs: type("AppDirs", (), {"user_cache_dir": tmp_path})(),  # noqa: ARG005
@@ -100,7 +101,7 @@ def test_cache_invalidated_on_source_change(tmp_cache_dir: Path) -> None:
 def test_function_with_no_source_code(tmp_cache_dir: Path) -> None:
     """Ensure functions without retrievable source code can still be cached and executed."""
 
-    def f(x:int) -> ResultModel:
+    def f(x: int) -> ResultModel:
         return ResultModel(value=x)
 
     cached = pydantic_cache(f)
@@ -149,8 +150,7 @@ def test_mutable_default_arguments(tmp_cache_dir: Path) -> None:
 
 def test_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Confirm that the cache directory is created automatically and populated with files."""
-    monkeypatch.setattr("auto_pydantic_cache.get_package_name", lambda: "pkg")
-    monkeypatch.setattr("auto_pydantic_cache.get_package_author", lambda: "auth")
+    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("pkg", "auth"))
     monkeypatch.setattr(
         "auto_pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
     )
@@ -162,6 +162,23 @@ def test_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     f(1)
     assert tmp_path.exists()
     assert any(tmp_path.iterdir())
+
+
+def test_subdir_cache_dir_created(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Confirm that the cache directory is created automatically and populated with files."""
+    monkeypatch.setattr("auto_pydantic_cache._resolve_namespace", lambda module_name: Namespace("pkg", "auth"))
+    monkeypatch.setattr(
+        "auto_pydantic_cache.platformdirs.AppDirs", lambda *_args: type("AppDirs", (), {"user_cache_dir": tmp_path})()
+    )
+
+    @pydantic_cache(cache_sub_dir="subdir")
+    def f(x: int) -> ResultModel:
+        return ResultModel(value=x)
+
+    f(1)
+    real_tmp_path = tmp_path / "subdir"
+    assert real_tmp_path.exists()
+    assert any(real_tmp_path.iterdir())
 
 
 def test_cache_serialization(tmp_cache_dir: Path) -> None:
@@ -307,7 +324,7 @@ def test_corrupt_cache_file(tmp_cache_dir: Path) -> None:
     file = tmp_cache_dir / function_call.file_name
     file.write_text("not_json")
     # Should recompute or raise controlled error
-    with pytest.raises(ValidationError):
+    with pytest.raises(CorruptedCacheFileError):
         _ = f(5)
 
 
@@ -344,7 +361,7 @@ def test_cache_file_exact_structure(tmp_cache_dir: Path) -> None:
     data = json.loads(file.read_text())
 
     # top-level keys
-    assert set(data.keys()) == {"function_call", "result"}
+    assert set(data.keys()) == {"function_call", "pydantic_model_type", "result"}
     assert data["result"] == {"value": 5}
     assert result.value == 5
 
