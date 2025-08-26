@@ -18,16 +18,16 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "mypy>=1.17.1",
+    "mypy==1.17.1",
     "openai==1.100.0",
     "pydantic-ai==0.7.2",
-    "pyrefly>=0.30.0",
-    "pyright>=1.1.404",
+    "pyrefly==0.30.0",
+    "pyright==1.1.404",
     "pytest==8.4.1",
-    "pytest-cov>=6.2.1",
+    "pytest-cov==6.2.1",
     "ruff==0.12.9",
-    "toml-sort>=0.24.2",
-    "ty>=0.0.1a19",
+    "toml-sort==0.24.2",
+    "ty==0.0.1a19",
 ]
 
 
