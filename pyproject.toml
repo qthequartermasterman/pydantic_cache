@@ -1,0 +1,40 @@
+[project]
+name = "auto-pydantic-cache"
+version = "0.1.0"
+description = "A caching utility for functions returning Pydantic models, optimized for deterministic and generative AI workflows."
+readme = "README.md"
+authors = [
+    { name = "Andrew P. Sansom", email = "andrew@euleriancircuit.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "platformdirs>=4.3.8,<4.4.0",
+    "pydantic>=2.10.0,<2.12.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.11,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "openai==1.100.0",
+    "pydantic-ai==0.7.2",
+    "pyrefly>=0.30.0",
+    "pyright>=1.1.404",
+    "pytest==8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff==0.12.9",
+    "toml-sort>=0.24.2",
+    "ty>=0.0.1a19",
+]
+
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D203", "D213", "COM812"]
+per-file-ignores = { "tests/**/*.py" = ["S101", "PLR2004", "ARG001", "D100", "D104"] }

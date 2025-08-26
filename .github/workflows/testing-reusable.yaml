@@ -1,0 +1,92 @@
+---
+name: Lint and Test
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version'
+        required: true
+        type: string
+      lint:
+        description: 'Run linter'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  HYPOTHESIS_PROFILE: "ci"
+  UV_SYSTEM_PYTHON: "true"
+
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/cache@v4
+      id: cache-uv
+      with:
+        path: ~/.cache/uv
+        key: ${{ runner.os }}-python-${{ inputs.python-version }}-uv
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install the latest version of uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: "latest"
+    - name: Install dependencies
+      run: |
+        uv pip install ".[test,lint]"
+    - name: Lint with ruff
+      if: ${{ inputs.lint }}
+      run: |
+        uv run ruff check --fix
+    - name: Format with ruff
+      if: ${{ inputs.lint }}
+      run: |
+        uv run ruff format
+    - uses: stefanzweifel/git-auto-commit-action@v6
+      if: ${{ inputs.lint }}
+      with:
+        commit_message: 'style: style fixes by ruff'
+    - name: Type check with mypy
+      if: ${{ inputs.lint }}
+      run: |
+        uv run mypy src
+
+    - name: Download example database
+      uses: dawidd6/action-download-artifact@v11
+      with:
+        name: hypothesis-example-db
+        path: .hypothesis/examples
+        if_no_artifact_found: warn
+        workflow_conclusion: completed
+
+    - name: Run tests
+      run: |
+        set -o pipefail
+        uv run python -m pytest \
+        --junitxml=pytest.xml \
+        --cov-report=term-missing:skip-covered \
+        --cov=hypothesis_torch \
+        tests | tee pytest-coverage.txt
+
+    - name: Upload example database
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: hypothesis-example-db
+        path: .hypothesis/examples
+
+    - name: Pytest coverage comment
+      uses: MishaKav/pytest-coverage-comment@main
+      with:
+        pytest-coverage-path: ./pytest-coverage.txt
+        junitxml-path: ./pytest.xml
