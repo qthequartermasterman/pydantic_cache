@@ -165,10 +165,10 @@ def _get_signature(func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> t
 
 
 @overload
-def pydantic_cache(func: None = None) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+def pydantic_cache(func: None = None, cache_sub_dir: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 @overload
 def pydantic_cache(func: Callable[P, R]) -> Callable[P, R]: ...
-def pydantic_cache(func: Callable[P, R] | None = None) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
+def pydantic_cache(func: Callable[P, R] | None = None, cache_sub_dir: str | None = None) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Cache the results of functions returning Pydantic models.
 
     The decorator serializes the function's input arguments and a SHA-256 hash of the function's
@@ -255,6 +255,27 @@ def pydantic_cache(func: Callable[P, R] | None = None) -> Callable[P, R] | Calla
         >>> ask_openai("What is the capital of France?")  # uses cache
         OpenAIResponse(content='Answer to: What is the capital of France?')
 
+        Example using a custom cache subdirectory:
+
+        >>> @pydantic_cache(cache_sub_dir="ai_cache")
+        ... def expensive_ai_call(x: int) -> ResultModel:
+        ...     print("Running expensive AI call...")
+        ...     return ResultModel(value=x * 10)
+        >>>
+        >>> expensive_ai_call(5)  # first call, prints message and caches in 'ai_cache' subdir
+        Running expensive AI call...
+        ResultModel(value=50)
+        >>> expensive_ai_call(5)  # second call, loads from 'ai_cache' subdir, no print
+        ResultModel(value=50)
+
+        You can also use a dynamic subdirectory name:
+
+        >>> @pydantic_cache(cache_sub_dir="user_123")
+        ... def user_specific(x: int) -> ResultModel:
+        ...     return ResultModel(value=x + 100)
+        >>> user_specific(1)
+        ResultModel(value=101)
+
     Note:
         - Cache entries are invalidated automatically if the function's source code changes.
         - Works best with deterministic functions returning Pydantic models.
@@ -276,6 +297,8 @@ def pydantic_cache(func: Callable[P, R] | None = None) -> Callable[P, R] | Calla
                 namespace = _resolve_namespace(module.__name__)
             app_dirs = platformdirs.AppDirs(namespace.package_name, namespace.package_author)
             cache_dir = pathlib.Path(app_dirs.user_cache_dir)
+            if cache_sub_dir:
+                cache_dir /= cache_sub_dir
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = (cache_dir) / function_call.file_name
             if cache_file.exists():
