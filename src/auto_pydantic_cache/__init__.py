@@ -37,12 +37,12 @@ Intended use:
 - Workflows involving structured AI outputs where repeated calls may be expensive.
 """
 
+import dataclasses
 import functools
 import hashlib
 import inspect
-import dataclasses
-import threading
 import pathlib
+import threading
 import warnings
 from collections.abc import Callable
 from typing import Any, Generic, TypeVar, cast, overload
@@ -54,23 +54,46 @@ from typing_extensions import ParamSpec
 P = ParamSpec("P")
 R = TypeVar("R", bound=pydantic.BaseModel)
 
+
 @dataclasses.dataclass
 class Namespace:
+    """A registered package namespace for cache file organization."""
+
     package_name: str
+    """The name of the package."""
     package_author: str | None
+    """The author of the package."""
+
 
 _NAMESPACES: dict[str, Namespace] = {}
 _lock = threading.RLock()
+_CANNOT_DETERMINE_CALLER_PACKAGE = "cannot determine caller package"
+
 
 def set_namespace(package_name: str, package_author: str | None = None, for_package: str | None = None) -> None:
+    """Register a package namespace for cache file organization.
+
+    This allows the caching system to store and retrieve cache files in a
+    structured manner based on the package hierarchy.
+
+    Args:
+        package_name: The name of the package to register.
+        package_author: The author of the package (optional).
+        for_package: The package for which to register the namespace (optional).
+
+    Raises:
+        RuntimeError: If the caller package cannot be determined.
+
+    """
     if for_package is None:
         frm = inspect.stack()[1].frame
         mod = inspect.getmodule(frm)
         if not mod:
-            raise RuntimeError("cannot determine caller package")
+            raise RuntimeError(_CANNOT_DETERMINE_CALLER_PACKAGE)
         for_package = mod.__name__
     with _lock:
         _NAMESPACES[for_package] = Namespace(package_name, package_author)
+
 
 def _resolve_namespace(module_name: str) -> Namespace:
     parts = module_name.split(".")
@@ -80,9 +103,6 @@ def _resolve_namespace(module_name: str) -> Namespace:
             if prefix in _NAMESPACES:
                 return _NAMESPACES[prefix]
     return Namespace(parts[0], None)
-
-
-
 
 
 class _FunctionCall(pydantic.BaseModel):
@@ -165,10 +185,14 @@ def _get_signature(func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> t
 
 
 @overload
-def pydantic_cache(func: None = None, cache_sub_dir: str | None = None) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+def pydantic_cache(
+    func: None = None, cache_sub_dir: str | None = None
+) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
 @overload
-def pydantic_cache(func: Callable[P, R]) -> Callable[P, R]: ...
-def pydantic_cache(func: Callable[P, R] | None = None, cache_sub_dir: str | None = None) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
+def pydantic_cache(func: Callable[P, R], cache_sub_dir: str | None = None) -> Callable[P, R]: ...
+def pydantic_cache(
+    func: Callable[P, R] | None = None, cache_sub_dir: str | None = None
+) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
     """Cache the results of functions returning Pydantic models.
 
     The decorator serializes the function's input arguments and a SHA-256 hash of the function's
@@ -186,6 +210,8 @@ def pydantic_cache(func: Callable[P, R] | None = None, cache_sub_dir: str | None
 
     Args:
         func: The function to wrap. If None, returns a decorator that can be applied to a function later.
+        cache_sub_dir: The subdirectory within the cache directory to store the cache files. If not specified, no
+            subdirectory will be used.
 
     Returns:
         A wrapped function that checks the cache before executing and stores the result if not already cached.
