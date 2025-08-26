@@ -82,14 +82,14 @@ def test_cache_invalidated_on_source_change(tmp_cache_dir: Path) -> None:
     """Confirm that changing the function source code invalidates the old cache and creates a new file."""
 
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x)
 
     f(1)
 
     # Change function behavior
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x + 1)
 
     f(1)
@@ -295,14 +295,14 @@ def test_ai_source_change(tmp_cache_dir: Path) -> None:
     """Confirm that modifying the AI call function source creates a new cache file."""
 
     @pydantic_cache
-    def ai_call(prompt: str) -> AIResponse:
+    def ai_call(prompt: str) -> AIResponse:  # pyright: ignore[reportRedeclaration]
         return AIResponse(text=f"Answer: {prompt}")
 
     ai_call("Hi")
 
     # redefine function
     @pydantic_cache
-    def ai_call(prompt: str) -> AIResponse:
+    def ai_call(prompt: str) -> AIResponse:  # pyright: ignore[reportRedeclaration]
         return AIResponse(text=f"New Answer: {prompt}")
 
     ai_call("Hi")
@@ -318,7 +318,7 @@ def test_corrupt_cache_file(tmp_cache_dir: Path) -> None:
 
     # write invalid JSON
     # We have to get the underlying wrapped function, otherwise we point at the wrong id.
-    function_call, _ = _get_signature(f.__wrapped__, 5)
+    function_call, _ = _get_signature(f.__wrapped__, 5)  # pyright: ignore[reportFunctionMemberAccess]
     file = tmp_cache_dir / function_call.file_name
     file.write_text("not_json")
     # Should recompute or raise controlled error
@@ -371,13 +371,13 @@ def test_cache_file_exact_structure(tmp_cache_dir: Path) -> None:
     }
 
     # function_name should contain "function f" but not assert id
-    assert fc["function_name"] == f.__wrapped__.__qualname__
+    assert fc["function_name"] == f.__wrapped__.__qualname__  # pyright: ignore[reportFunctionMemberAccess]
     # enforce that no memory address digits leak into test stability
 
     assert fc["function_arguments"] == {"x": 5}
 
     # verify hash matches source code
-    src = inspect.getsource(f.__wrapped__)
+    src = inspect.getsource(f.__wrapped__)  # pyright: ignore[reportFunctionMemberAccess]
     src_hash = hashlib.sha256(src.encode()).hexdigest()
     assert fc["function_source_code_hash"] == src_hash
 
@@ -386,7 +386,7 @@ def test_cache_file_changes_when_source_changes(tmp_cache_dir: Path) -> None:
     """Ensure that cache file contents and hash change when the function source code is modified."""
 
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x)
 
     f(5)
@@ -396,7 +396,7 @@ def test_cache_file_changes_when_source_changes(tmp_cache_dir: Path) -> None:
 
     # redefine f with different code
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x + 100)
 
     f(5)
@@ -418,7 +418,7 @@ def test_cache_file_valid_when_loading_same_function(tmp_cache_dir: Path) -> Non
     """Confirm that reloading the same function source does not duplicate cache files and maintains hash consistency."""
 
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x)
 
     f(5)
@@ -428,7 +428,7 @@ def test_cache_file_valid_when_loading_same_function(tmp_cache_dir: Path) -> Non
 
     # redefine f with same code (like we loaded the same source code twice)
     @pydantic_cache
-    def f(x: int) -> ResultModel:
+    def f(x: int) -> ResultModel:  # pyright: ignore[reportRedeclaration]
         return ResultModel(value=x)
 
     f(5)

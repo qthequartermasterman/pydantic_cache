@@ -28,13 +28,13 @@ repos:
     - id: ruff-format
 - repo: local
   hooks:
-    - id: mypy
-      name: mypy
-      entry: mypy
+    - id: pyright
+      name: pyright
+      entry: uv run pyright
       language: system
       types: [python]
     - id: toml-sort
       name: toml-sort
-      entry: toml-sort
+      entry: uv run toml-sort
       language: system
       types: [toml]

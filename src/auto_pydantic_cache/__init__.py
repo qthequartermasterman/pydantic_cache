@@ -211,7 +211,7 @@ def _get_signature(func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> t
     )
 
 
-def _import_item_from_string(dotted_path: str) -> R:
+def _import_item_from_string(dotted_path: str) -> Any:  # noqa: ANN401
     """Import a module or attribute from a dotted path string.
 
     Args:
@@ -376,7 +376,7 @@ def pydantic_cache(  # noqa: C901
     def decorator(f: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(f)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            return_type: type[R]
+            return_type: R
             function_call, return_type = _get_signature(f, *args, **kwargs)
             module = inspect.getmodule(f)
             if module is None or not module.__name__:
@@ -399,7 +399,8 @@ def pydantic_cache(  # noqa: C901
                         return_type = _import_item_from_string(serialized_model_type)
                 try:
                     cached_model: _CachedModel[R] = cast(
-                        "_CachedModel[R]", _CachedModel[return_type].model_validate(cached_model_json)
+                        "_CachedModel[R]",
+                        _CachedModel[return_type].model_validate(cached_model_json),  # type: ignore[valid-type]
                     )
                 except pydantic.ValidationError as e:
                     raise CorruptedCacheFileError(cache_file, e) from e

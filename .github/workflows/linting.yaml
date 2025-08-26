@@ -26,7 +26,7 @@ jobs:
         version: "latest"
     - name: Install requirements
       run: |
-          uv pip install -e .[lint,test]
+          uv pip install -e .[dev,lint,test]
     - uses: pre-commit/action@v3.0.1
     - uses: stefanzweifel/git-auto-commit-action@v6
       if: ${{ inputs.lint }}
