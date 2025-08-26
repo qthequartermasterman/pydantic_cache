@@ -47,19 +47,19 @@ jobs:
     - name: Lint with ruff
       if: ${{ inputs.lint }}
       run: |
-        ruff check --fix
+        uv run ruff check --fix
     - name: Format with ruff
       if: ${{ inputs.lint }}
       run: |
-        ruff format
+        uv run ruff format
     - uses: stefanzweifel/git-auto-commit-action@v6
       if: ${{ inputs.lint }}
       with:
         commit_message: 'style: style fixes by ruff'
-    - name: Type check with Mypy
+    - name: Type check with mypy
       if: ${{ inputs.lint }}
       run: |
-        mypy timer_context
+        uv run mypy src
 
     - name: Download example database
       uses: dawidd6/action-download-artifact@v11
