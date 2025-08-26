@@ -27,7 +27,8 @@ This decorator is especially useful when working with tools like **Pydantic AI**
 3. Reduce latency and cost when experimenting with AI-powered pipelines that return structured Pydantic models.
 
 Cache files are stored in the standard user cache directory (via `platformdirs`) under a
-package-specific subdirectory, determined by `get_package_name()` and `get_package_author()`.
+package-specific subdirectory, determined by the registered namespace. If multiple registered namespaces are applicable
+(for example if a decorated function is in `top_library.subpackage`), then the most specific namespace is used.
 
 Intended use:
 
@@ -39,6 +40,8 @@ Intended use:
 import functools
 import hashlib
 import inspect
+import dataclasses
+import threading
 import pathlib
 import warnings
 from collections.abc import Callable
@@ -51,13 +54,35 @@ from typing_extensions import ParamSpec
 P = ParamSpec("P")
 R = TypeVar("R", bound=pydantic.BaseModel)
 
+@dataclasses.dataclass
+class Namespace:
+    package_name: str
+    package_author: str | None
 
-def get_package_name() -> str:
-    return "DUMMY_PACKAGE"
+_NAMESPACES: dict[str, Namespace] = {}
+_lock = threading.RLock()
+
+def set_namespace(package_name: str, package_author: str | None = None, for_package: str | None = None) -> None:
+    if for_package is None:
+        frm = inspect.stack()[1].frame
+        mod = inspect.getmodule(frm)
+        if not mod:
+            raise RuntimeError("cannot determine caller package")
+        for_package = mod.__name__
+    with _lock:
+        _NAMESPACES[for_package] = Namespace(package_name, package_author)
+
+def _resolve_namespace(module_name: str) -> Namespace:
+    parts = module_name.split(".")
+    with _lock:
+        for i in range(len(parts), 0, -1):
+            prefix = ".".join(parts[:i])
+            if prefix in _NAMESPACES:
+                return _NAMESPACES[prefix]
+    return Namespace(parts[0], None)
 
 
-def get_package_author() -> str:
-    return "DUMMY_AUTHOR"
+
 
 
 class _FunctionCall(pydantic.BaseModel):
@@ -244,7 +269,12 @@ def pydantic_cache(func: Callable[P, R] | None = None) -> Callable[P, R] | Calla
         @functools.wraps(f)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             function_call, return_type = _get_signature(f, *args, **kwargs)
-            app_dirs = platformdirs.AppDirs(get_package_name(), get_package_author())
+            module = inspect.getmodule(f)
+            if module is None or not module.__name__:
+                namespace = Namespace("auto_pydantic_cache_default", None)
+            else:
+                namespace = _resolve_namespace(module.__name__)
+            app_dirs = platformdirs.AppDirs(namespace.package_name, namespace.package_author)
             cache_dir = pathlib.Path(app_dirs.user_cache_dir)
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = (cache_dir) / function_call.file_name
