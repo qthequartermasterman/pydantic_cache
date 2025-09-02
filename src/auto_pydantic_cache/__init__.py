@@ -46,7 +46,7 @@ import json
 import pathlib
 import threading
 import warnings
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, Generic, TypeVar, cast, overload
 
 import platformdirs
@@ -178,7 +178,9 @@ class _CachedModel(pydantic.BaseModel, Generic[R]):
     """The output of the function, which must be a Pydantic model."""
 
 
-def _get_signature(func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> tuple[_FunctionCall, Any]:
+def _get_signature(
+    func: Callable[P, R] | Callable[P, Awaitable[R]], *args: P.args, **kwargs: P.kwargs
+) -> tuple[_FunctionCall, Any]:
     """Get the function call details, to be serialized alongside the model.
 
     Args:
@@ -245,15 +247,38 @@ def _get_type_name(instance: object) -> str:
     return f"{instance.__class__.__module__}.{instance.__class__.__qualname__}"
 
 
+def _get_cache_result(return_type: R, cache_file: pathlib.Path) -> R | None:
+    if cache_file.exists():
+        try:
+            cached_model_json = json.loads(cache_file.read_text())
+        except json.JSONDecodeError as e:
+            raise CorruptedCacheFileError(cache_file, e) from e
+        if serialized_model_type := cached_model_json.get("pydantic_model_type"):
+            with contextlib.suppress(ImportError):
+                return_type = _import_item_from_string(serialized_model_type)
+        try:
+            cached_model: _CachedModel[R] = cast(
+                "_CachedModel[R]",
+                _CachedModel[return_type].model_validate(cached_model_json),  # type: ignore[valid-type]
+            )
+        except pydantic.ValidationError as e:
+            raise CorruptedCacheFileError(cache_file, e) from e
+        else:
+            return cached_model.result
+    return None
+
+
+@overload
+def pydantic_cache(func: Callable[P, R], cache_sub_dir: str | None = ...) -> Callable[P, R]: ...
+@overload
+def pydantic_cache(func: Callable[P, Awaitable[R]], cache_sub_dir: str | None = ...) -> Callable[P, Awaitable[R]]: ...
 @overload
 def pydantic_cache(
-    func: None = None, cache_sub_dir: str | None = None
-) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
-@overload
-def pydantic_cache(func: Callable[P, R], cache_sub_dir: str | None = None) -> Callable[P, R]: ...
+    *, cache_sub_dir: str | None = ...
+) -> Callable[[Callable[P, R] | Callable[P, Awaitable[R]]], Callable[P, R] | Callable[P, Awaitable[R]]]: ...
 def pydantic_cache(  # noqa: C901
-    func: Callable[P, R] | None = None, cache_sub_dir: str | None = None
-) -> Callable[P, R] | Callable[[Callable[P, R]], Callable[P, R]]:
+    func: Callable[P, R] | Callable[P, Awaitable[R]] | None = None, cache_sub_dir: str | None = None
+) -> Any:
     """Cache the results of functions returning Pydantic models.
 
     The decorator serializes the function's input arguments and a SHA-256 hash of the function's
@@ -261,13 +286,16 @@ def pydantic_cache(  # noqa: C901
     cache directory (determined via `platformdirs`). Subsequent calls with the same arguments
     and unchanged function code will return the cached result, avoiding recomputation.
 
-    Supports usage both with and without parentheses:
+    Supports both synchronous and asynchronous functions, with usage both with and without parentheses:
 
     >>> @pydantic_cache
     ... def func(...): ...
 
     >>> @pydantic_cache()
     ... def func(...): ...
+
+    >>> @pydantic_cache
+    ... async def async_func(...): ...
 
     Args:
         func: The function to wrap. If None, returns a decorator that can be applied to a function later.
@@ -363,6 +391,18 @@ def pydantic_cache(  # noqa: C901
         >>> user_specific(1)
         ResultModel(value=101)
 
+        Async function example:
+
+        >>> import asyncio
+        >>> @pydantic_cache
+        ... async def async_ai_call(prompt: str) -> AIResponse:
+        ...     await asyncio.sleep(0.1)  # simulate network delay
+        ...     return AIResponse(text=f"Response: {prompt}")
+        >>> asyncio.run(async_ai_call("Hello"))  # first call, computes result
+        AIResponse(text='Response: Hello')
+        >>> asyncio.run(async_ai_call("Hello"))  # second call, uses cache
+        AIResponse(text='Response: Hello')
+
     Note:
         - Cache entries are invalidated automatically if the function's source code changes.
         - Works best with deterministic functions returning Pydantic models.
@@ -373,47 +413,62 @@ def pydantic_cache(  # noqa: C901
 
     """
 
-    def decorator(f: Callable[P, R]) -> Callable[P, R]:
-        @functools.wraps(f)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            return_type: R
-            function_call, return_type = _get_signature(f, *args, **kwargs)
-            module = inspect.getmodule(f)
-            if module is None or not module.__name__:
-                namespace = Namespace("auto_pydantic_cache_default", None)
-            else:
-                namespace = _resolve_namespace(module.__name__)
-            app_dirs = platformdirs.AppDirs(namespace.package_name, namespace.package_author)
-            cache_dir = pathlib.Path(app_dirs.user_cache_dir)
-            if cache_sub_dir:
-                cache_dir /= cache_sub_dir
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            cache_file = (cache_dir) / function_call.file_name
-            if cache_file.exists():
-                try:
-                    cached_model_json = json.loads(cache_file.read_text())
-                except json.JSONDecodeError as e:
-                    raise CorruptedCacheFileError(cache_file, e) from e
-                if serialized_model_type := cached_model_json.get("pydantic_model_type"):
-                    with contextlib.suppress(ImportError):
-                        return_type = _import_item_from_string(serialized_model_type)
-                try:
-                    cached_model: _CachedModel[R] = cast(
-                        "_CachedModel[R]",
-                        _CachedModel[return_type].model_validate(cached_model_json),  # type: ignore[valid-type]
-                    )
-                except pydantic.ValidationError as e:
-                    raise CorruptedCacheFileError(cache_file, e) from e
-                else:
-                    return cached_model.result
+    def _save_cache_result(function_call: _FunctionCall, result: R, cache_file: pathlib.Path) -> None:
+        result_type = _get_type_name(result)
+        cached_model = _CachedModel(function_call=function_call, pydantic_model_type=result_type, result=result)
+        cache_file.write_text(cached_model.model_dump_json())
 
-            result = f(*args, **kwargs)
-            result_type = _get_type_name(result)
-            cached_model = _CachedModel(function_call=function_call, pydantic_model_type=result_type, result=result)
-            cache_file.write_text(cached_model.model_dump_json())
+    def _setup_cache_dir(
+        f: Callable[P, R] | Callable[P, Awaitable[R]], *args: P.args, **kwargs: P.kwargs
+    ) -> tuple[pathlib.Path, _FunctionCall, Any]:
+        function_call, return_type = _get_signature(f, *args, **kwargs)
+        module = inspect.getmodule(f)
+        if module is None or not module.__name__:
+            namespace = Namespace("auto_pydantic_cache_default", None)
+        else:
+            namespace = _resolve_namespace(module.__name__)
+        app_dirs = platformdirs.AppDirs(namespace.package_name, namespace.package_author)
+        cache_dir = pathlib.Path(app_dirs.user_cache_dir)
+        if cache_sub_dir:
+            cache_dir /= cache_sub_dir
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / function_call.file_name
+        return cache_file, function_call, return_type
+
+    @overload
+    def decorator(f: Callable[P, R]) -> Callable[P, R]: ...
+    @overload
+    def decorator(f: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
+    def decorator(f: Callable[P, R] | Callable[P, Awaitable[R]]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
+        if inspect.iscoroutinefunction(f):
+            f_async = cast("Callable[P, Awaitable[R]]", f)
+
+            @functools.wraps(f_async)
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+                cache_file, function_call, return_type = _setup_cache_dir(f_async, *args, **kwargs)
+                cached_result = _get_cache_result(return_type, cache_file)
+                if cached_result is not None:
+                    return cached_result
+
+                result = await f_async(*args, **kwargs)
+                _save_cache_result(function_call, result, cache_file)
+                return result
+
+            return async_wrapper
+        f_sync = cast("Callable[P, R]", f)
+
+        @functools.wraps(f_sync)
+        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            cache_file, function_call, return_type = _setup_cache_dir(f_sync, *args, **kwargs)
+            cached_result = _get_cache_result(return_type, cache_file)
+            if cached_result is not None:
+                return cached_result
+
+            result = f_sync(*args, **kwargs)
+            _save_cache_result(function_call, result, cache_file)
             return result
 
-        return wrapper
+        return sync_wrapper
 
     if func is None:
         return decorator

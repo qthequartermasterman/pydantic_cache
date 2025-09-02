@@ -24,6 +24,7 @@ dev = [
     "pyrefly==0.30.0",
     "pyright==1.1.404",
     "pytest==8.4.1",
+    "pytest-asyncio==0.24.0",
     "pytest-cov==6.2.1",
     "ruff==0.12.9",
     "toml-sort==0.24.2",

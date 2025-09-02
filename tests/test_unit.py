@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import inspect
 import json
@@ -380,6 +381,79 @@ def test_cache_file_exact_structure(tmp_cache_dir: Path) -> None:
     src = inspect.getsource(f.__wrapped__)  # pyright: ignore[reportFunctionMemberAccess]
     src_hash = hashlib.sha256(src.encode()).hexdigest()
     assert fc["function_source_code_hash"] == src_hash
+
+
+@pytest.mark.asyncio
+async def test_async_cache_creates_file(tmp_cache_dir: Path) -> None:
+    """Verify that calling a cached async function creates a cache file on disk."""
+
+    @pydantic_cache
+    async def f(x: int) -> ResultModel:
+        return ResultModel(value=x)
+
+    await f(10)
+    files = list(tmp_cache_dir.iterdir())
+    assert len(files) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_cache_returns_cached_result(tmp_cache_dir: Path) -> None:
+    """Ensure repeated calls to async function with same arguments return cached result."""
+    calls = []
+
+    @pydantic_cache
+    async def f(x: int) -> ResultModel:
+        calls.append(x)
+        await asyncio.sleep(0.01)  # simulate async work
+        return ResultModel(value=x)
+
+    await f(1)
+    await f(1)
+    assert calls == [1]  # Only first call executed
+
+
+@pytest.mark.asyncio
+async def test_async_simulated_ai_call(tmp_cache_dir: Path) -> None:
+    """Simulate an async AI call and verify caching works correctly."""
+    calls: list[str] = []
+
+    @pydantic_cache
+    async def ai_call(prompt: str) -> AIResponse:
+        calls.append(prompt)
+        await asyncio.sleep(0.01)  # simulate network delay
+        return AIResponse(text=f"Answer: {prompt}")
+
+    r1 = await ai_call("Hello")
+    r2 = await ai_call("Hello")
+    assert r1 == r2
+    assert len(calls) == 1  # cached
+
+
+@pytest.mark.asyncio
+async def test_async_different_args_create_different_cache_files(tmp_cache_dir: Path) -> None:
+    """Check that different async function arguments produce distinct cache files."""
+
+    @pydantic_cache
+    async def f(x: int) -> ResultModel:
+        return ResultModel(value=x)
+
+    await f(1)
+    await f(2)
+    assert len(list(tmp_cache_dir.iterdir())) == 2
+
+
+@pytest.mark.asyncio
+async def test_async_nested_model(tmp_cache_dir: Path) -> None:
+    """Ensure that async functions returning nested Pydantic models are cached correctly."""
+
+    @pydantic_cache
+    async def f(x: int) -> NestedModel:
+        await asyncio.sleep(0.01)
+        return NestedModel(inner=ResultModel(value=x))
+
+    r1 = await f(3)
+    r2 = await f(3)
+    assert r1 == r2
 
 
 def test_cache_file_changes_when_source_changes(tmp_cache_dir: Path) -> None:
