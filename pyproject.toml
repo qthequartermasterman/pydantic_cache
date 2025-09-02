@@ -1,6 +1,6 @@
 [project]
 name = "auto-pydantic-cache"
-version = "0.1.0"
+version = "1.1.1"
 description = "A caching utility for functions returning Pydantic models, optimized for deterministic and generative AI workflows."
 readme = "README.md"
 authors = [
