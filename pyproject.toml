@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "platformdirs>=4.3.8,<4.4.0",
+    "platformdirs>=4.3.8,<4.5.0",
     "pydantic>=2.10.0,<2.12.0",
 ]
 
@@ -19,20 +19,20 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "mypy==1.17.1",
-    "openai==1.100.0",
-    "pydantic-ai==0.7.2",
-    "pyrefly==0.30.0",
-    "pyright==1.1.404",
-    "pytest==8.4.1",
-    "pytest-asyncio==0.24.0",
-    "pytest-cov==6.2.1",
-    "ruff==0.12.9",
+    "openai==1.107.0",
+    "pydantic-ai==1.0.1",
+    "pyrefly==0.32.0",
+    "pyright==1.1.405",
+    "pytest==8.4.2",
+    "pytest-asyncio==1.1.0",
+    "pytest-cov==6.3.0",
+    "ruff==0.12.12",
     "toml-sort==0.24.2",
-    "ty==0.0.1a19",
+    "ty==0.0.1a20",
 ]
 
 [project.optional-dependencies]
-build = ["uv==0.8.14"]
+build = ["uv==0.8.15"]
 
 
 [tool.ruff]
